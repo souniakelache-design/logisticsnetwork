@@ -1,0 +1,128 @@
+from pulp import *
+
+# إنشاء نموذج التحسين (نموذج تقليل التكلفة الكلية)
+model = LpProblem("Export_Optimization", LpMinimize)
+
+# المجموعات
+warehouses = ['Algiers', 'Oran']
+markets = ['EU', 'AF', 'AS']
+scenarios = ['s1', 's2']
+
+# التكاليف والقدرات الاستيعابية
+fixed_cost = {'Algiers': 95000, 'Oran': 80000}
+capacity = {'Algiers': 350, 'Oran': 150}
+
+transport_cost = {
+    ('Algiers', 'EU'): 190, ('Algiers', 'AF'): 175, ('Algiers', 'AS'): 230,
+    ('Oran', 'EU'): 220, ('Oran', 'AF'): 150, ('Oran', 'AS'): 300
+}
+
+# احتمالية كل سيناريو
+scenarios_prob = {'s1': 0.8, 's2': 0.4}
+
+# الطلب المتوقع في كل سيناريو
+demand = {
+    's1': {'EU': 200, 'AF': 150, 'AS': 180},
+    's2': {'EU': 150, 'AF': 120, 'AS': 130}
+}
+
+# المتغيرات
+ship = LpVariable.dicts("Ship", (scenarios, warehouses, markets), lowBound=0)
+open_warehouse = LpVariable.dicts("Open", warehouses, cat="Binary")
+
+# الدالة الهدف (التكلفة الكلية المتوقعة)
+model += (
+    lpSum(scenarios_prob[s] * transport_cost[(w, m)] * ship[s][w][m]
+          for s in scenarios for w in warehouses for m in markets)
+    + lpSum(fixed_cost[w] * open_warehouse[w] for w in warehouses)
+)
+
+# قيود السعة التخزينية
+for w in warehouses:
+    for s in scenarios:
+        model += lpSum(ship[s][w][m] for m in markets) <= capacity[w] * open_warehouse[w]
+
+# قيود تلبية الطلب
+for s in scenarios:
+    for m in markets:
+        model += lpSum(ship[s][w][m] for w in warehouses) >= demand[s][m]
+
+# حل النموذج
+model.solve(PULP_CBC_CMD(msg=True))
+
+# عرض النتائج
+print("\nنتائج الشحن:")
+for s in scenarios:
+    for w in warehouses:
+        for m in markets:
+            print(f"Ship[{s},{w},{m}] = {ship[s][w][m].value():.2f}")
+
+print("\nالمستودعات المفتوحة:")
+for w in warehouses:
+    print(f"{w}: {open_warehouse[w].value():.0f}")
+
+print(f"\nالقيمة المثلى للدالة الهدف المتوقعة = {value(model.objective):,.2f}")
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def draw_shipping_network(scenario):
+    G = nx.DiGraph()
+
+    # العقد
+    for w in warehouses:
+        G.add_node(w, color='skyblue')
+    for m in markets:
+        G.add_node(m, color='lightgreen')
+
+    # الحواف
+    has_edges = False
+    for w in warehouses:
+        for m in markets:
+            qty = ship[scenario][w][m].value()
+            if qty is not None and qty > 0:
+                G.add_edge(w, m, weight=qty)
+                has_edges = True
+
+    if not has_edges:
+        print(f"No shipments in scenario {scenario}")
+        return
+
+    pos = {
+        'Algiers': (0, 1),
+        'Oran': (0, -1),
+        'EU': (3, 1),
+        'AF': (3, 0),
+        'AS': (3, -1)
+    }
+    for s in scenarios:
+        draw_shipping_network(s)
+
+    node_colors = []
+    for node in G.nodes():
+        if node in warehouses:
+            node_colors.append('skyblue')
+        else:
+            node_colors.append('lightgreen')
+
+    plt.figure(figsize=(8, 5))
+
+    nx.draw(
+        G,
+        pos,
+        with_labels=True,
+        node_color=node_colors,
+        node_size=2500,
+        font_size=10,
+        arrows=True
+    )
+
+    edge_labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw_networkx_edge_labels(
+        G,
+        pos,
+        edge_labels={k: f"{v:.0f}" for k, v in edge_labels.items()}
+    )
+
+    plt.title(f"Export Shipping Network – Scenario {scenario}")
+    plt.axis('off')
+    plt.show()
