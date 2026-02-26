@@ -1,0 +1,67 @@
+from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+import math
+import matplotlib.pyplot as plt
+
+# ===================== المعطيات =====================
+locations = [
+    (0, 0),  # Depot
+    (2, 3),  # C1
+    (4, 1),  # C2
+    (3, 4),  # C3
+    (1, 5),  # C4
+    (6, 2)   # C5
+]
+
+num_vehicles = 1
+depot = 0
+
+# ===================== إعداد نموذج VRP =====================
+manager = pywrapcp.RoutingIndexManager(len(locations), num_vehicles, depot)
+routing = pywrapcp.RoutingModel(manager)
+
+# ===================== دالة المسافة مباشرة =====================
+def distance_callback(from_index, to_index):
+    from_node = manager.IndexToNode(from_index)
+    to_node = manager.IndexToNode(to_index)
+    x1, y1 = locations[from_node]
+    x2, y2 = locations[to_node]
+    return int(math.hypot(x2 - x1, y2 - y1))
+
+transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+# ===================== إعداد البحث =====================
+search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+
+# ===================== حل المشكلة =====================
+solution = routing.SolveWithParameters(search_parameters)
+
+# ===================== طباعة النتائج ورسم المسار =====================
+if solution:
+    route = []
+    index = routing.Start(0)
+    while not routing.IsEnd(index):
+        route.append(manager.IndexToNode(index))
+        index = solution.Value(routing.NextVar(index))
+    route.append(manager.IndexToNode(index))  # العودة إلى المستودع
+
+    print("المسار الأفضل:", " -> ".join(str(r) for r in route))
+
+    # رسم المسار
+    x_coords = [locations[i][0] for i in route]
+    y_coords = [locations[i][1] for i in route]
+
+    plt.figure(figsize=(8,6))
+    plt.plot(x_coords, y_coords, 'o-', color='blue', label='path')
+    plt.scatter(locations[0][0], locations[0][1], c='red', s=100, label='Depot')
+    for i, (x, y) in enumerate(locations):
+        plt.text(x+0.1, y+0.1, f"C{i}" if i>0 else "Depot")
+    plt.title("VRP")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+else:
+    print("لا يوجد حل!")
