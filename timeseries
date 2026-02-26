@@ -1,0 +1,23 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+# استيراد الملفات من الحاسوب CSV
+data = pd.read_csv("sales_data.csv")
+print(data.head())
+# ترتيب البيانات
+print(data.info())
+# وصف البيانات
+print(data.describe())
+# إزالة القيم الفارغة
+data = data.dropna()
+#إضافة القيم المفقودة
+data["Sales"] = data["Sales"].fillna(data["Sales"].mean())
+#التنبؤ باستخدام السلاسل الزمنية
+# تحويل العمود إلى تاريخ
+data["Date"] = pd.to_datetime(data["Date"])
+data.set_index('Date', inplace=True)
+# رسم الطلب على مر الزمن
+plt.plot(data["Sales"], label="Sales")
+plt.title("Demand as a function of time")
+plt.xlabel("Date")
+plt.ylabel("Sales")
+plt.show()
