@@ -1,0 +1,62 @@
+from pulp import *
+
+# إنشاء نموذج التحسين
+model = LpProblem("Export_Optimization", LpMinimize)
+
+# المجموعات
+warehouses = ['Algiers', 'Oran']
+markets = ['EU', 'AF', 'AS']
+scenarios = ['s1', 's2']
+
+# المعاملات
+fixed_cost = {'Algiers': 100000, 'Oran': 80000}
+capacity = {'Algiers': 300, 'Oran': 250}
+
+transport_cost = {
+    ('Algiers', 'EU'): 200, ('Algiers', 'AF'): 160, ('Algiers', 'AS'): 250,
+    ('Oran', 'EU'): 220, ('Oran', 'AF'): 150, ('Oran', 'AS'): 260
+}
+
+scenarios_prob = {'s1': 0.5, 's2': 0.5}
+
+# الطلب في كل سيناريو
+demand = {
+    's1': {'EU': 130, 'AF': 150, 'AS': 180},
+    's2': {'EU': 120, 'AF': 170, 'AS': 130}
+}
+
+# المتغيرات
+ship = LpVariable.dicts("Ship", (scenarios, warehouses, markets), lowBound=0)
+open_warehouse = LpVariable.dicts("Open", warehouses, cat="Binary")
+
+# الدالة الهدف (التكلفة الكلية المتوقعة)
+model += lpSum(
+    scenarios_prob[s] * transport_cost[(w, m)] * ship[s][w][m]
+    for s in scenarios for w in warehouses for m in markets
+) + lpSum(fixed_cost[w] * open_warehouse[w] for w in warehouses)
+
+# قيود الاستيعاب
+for w in warehouses:
+    for s in scenarios:
+        model += lpSum(ship[s][w][m] for m in markets) <= capacity[w] * open_warehouse[w]
+
+# قيود الطلب المتوقعة
+for s in scenarios:
+    for m in markets:
+        model += lpSum(ship[s][w][m] for w in warehouses) >= demand[s][m]
+
+# حل النموذج
+model.solve(PULP_CBC_CMD(msg=True))
+
+# النتائج
+print("\n نتائج الشحن:")
+for s in scenarios:
+    for w in warehouses:
+        for m in markets:
+            print(f"Ship[{s},{w},{m}] = {ship[s][w][m].value():.2f}")
+
+print("\n المستودعات المفتوحة:")
+for w in warehouses:
+    print(f"{w}: {open_warehouse[w].value()}")
+
+print(f"\n القيمة المثلى للدالة الهدف المتوقعة = {value(model.objective):,.2f}")
