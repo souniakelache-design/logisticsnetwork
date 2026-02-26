@@ -1,0 +1,38 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+# استيراد الملفات من الحاسوب CSV
+data = pd.read_csv("sales_data.csv")
+print(data.head())
+# ترتيب البيانات
+print(data.info())
+# وصف البيانات
+print(data.describe())
+# إزالة القيم الفارغة
+data = data.dropna()
+#إضافة القيم المفقودة
+data["Sales"] = data["Sales"].fillna(data["Sales"].mean())
+# تحويل العمود إلى تاريخ
+data["Date"] = pd.to_datetime(data["Date"])
+data.set_index('Date', inplace=True)
+model = ARIMA(data['Sales'], order=(1,1,1))
+result = model.fit()
+print(result.summary())
+forecast = result.forecast(steps=10)
+print(forecast)
+plt.plot(data['Sales'], label="Actual")
+plt.plot(forecast, label="Forecast", color='red')
+plt.title("Prediction with ARIMA")
+plt.legend()
+plt.show()
+data['Date'] = pd.to_datetime(data['Date'])
+train = data[:int(0.8*len(data))]
+test  = data[int(0.8*len(data)):]
+model = ARIMA(train['Sales'], order=(2,1,2))
+model_fit = model.fit()
+forecast_test = model_fit.forecast(steps=len(test))
+plt.plot(train['sales'], label="Train")
+plt.plot(test['sales'], label="Test")
+plt.plot(forecast_test, label="Predicted")
+plt.legend()
+plt.show()
