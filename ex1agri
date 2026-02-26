@@ -1,0 +1,90 @@
+import pulp
+# المجموعات
+centers = ['C1', 'C2', 'C3']
+markets = ['M1', 'M2', 'M3']
+
+#المعطيات
+fixed_cost = {'C1': 80000, 'C2': 70000, 'C3': 60000}
+capacity = {'C1': 600, 'C2': 400, 'C3': 500}
+demand = {'M1': 300, 'M2': 350, 'M3': 400}
+shipping_Variables = {
+    ('C1', 'M1'): 30, ('C1', 'M2'): 35, ('C1', 'M3'): 40,
+    ('C2', 'M1'): 32, ('C2', 'M2'): 30, ('C2', 'M3'): 37,
+    ('C3', 'M1'): 28, ('C3', 'M2'): 33, ('C3', 'M3'): 38
+}
+
+# تعريف النموذج
+model = pulp.LpProblem("AgriExport_Facility_Location", pulp.LpMinimize)
+
+# المتغيرات
+x = pulp.LpVariable.dicts("x", (centers, markets), lowBound=0)
+y = pulp.LpVariable.dicts("y", centers, cat='Binary')
+
+# دالة الهدف
+model += pulp.lpSum(fixed_cost[i] * y[i] for i in centers) + \
+         pulp.lpSum(shipping_Variables[(i,j)] * x[i][j] for i in centers for j in markets)
+
+# قيود الطلب
+for j in markets:
+    model += pulp.lpSum(x[i][j] for i in centers) == demand[j]
+
+# قيود الاستيعاب
+for i in centers:
+    model += pulp.lpSum(x[i][j] for j in markets) <= capacity[i] * y[i]
+
+# حل النموذج
+model.solve()
+
+# النتائج
+print("statut:", pulp.LpStatus[model.status])
+for i in centers:
+    print(f"{i} open؟", y[i].value())
+for i in centers:
+    for j in markets:
+        if x[i][j].value() > 0:
+            print(f"Shipping_Variables {x[i][j].value()} tons from {i} to {j}")
+print("Total cost =", pulp.value(model.objective))
+# =========================================================
+# كود رسم الشبكة (Network Visualization)
+# =========================================================
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# إنشاء شبكة موجهة
+G = nx.DiGraph()
+
+# إضافة العقد (المراكز والأسواق)
+for c in centers:
+    G.add_node(c, pos=(0, centers.index(c)*2))  # المراكز على اليسار
+for m in markets:
+    G.add_node(m, pos=(6, markets.index(m)*2))  # الأسواق على اليمين
+
+# إضافة الحواف التي تم شحنها فقط (x[i][j] > 0)
+for i in centers:
+    for j in markets:
+        if x[i][j].value() > 0:
+            G.add_edge(i, j, weight=shipping_Variables[(i, j)], flow=x[i][j].value())
+# استخراج المواقع
+pos = nx.get_node_attributes(G, 'pos')
+
+# رسم العقد
+nx.draw_networkx_nodes(G, pos, nodelist=centers, node_color='skyblue', node_size=1500, label='Centers')
+nx.draw_networkx_nodes(G, pos, nodelist=markets, node_color='lightgreen', node_size=1500, label='Markets')
+
+# رسم الحواف (مع عرض سماكة حسب كمية الشحن)
+edges = G.edges()
+widths = [G[u][v]['flow']/100 for u, v in edges]  # لتوضيح الكميات
+nx.draw_networkx_edges(G, pos, edgelist=edges, width=widths, arrows=True, arrowstyle='-|>', arrowsize=15)
+
+# كتابة أسماء العقد
+nx.draw_networkx_labels(G, pos, font_size=10, font_color='black')
+
+# كتابة القيم على الحواف (كمية وتكلفة)
+edge_labels = {(u, v): f"{G[u][v]['flow']} @ {G[u][v]['weight']}" for u, v in G.edges()}
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+# إعداد الشكل العام
+plt.title("Logistics Network - Optimal Shipments", fontsize=12)
+plt.axis('off')
+plt.legend()
+plt.show()
