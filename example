@@ -1,0 +1,122 @@
+# ============================================================
+#  نموذج تصميم شبكة شركة AgriExport للتصدير
+# باستخدام البرمجة الخطية الصحيحة (MILP) عبر مكتبة PuLP
+# ============================================================
+
+#  استيراد المكتبة
+from pulp import LpProblem, LpVariable, LpMinimize, lpSum, PULP_CBC_CMD, value
+
+#  تعريف المجموعات
+centers = ['Algiers', 'Oran', 'Annaba']   # المراكز المحتملة (i)
+markets = ['France', 'Italy', 'Spain']    # الأسواق الخارجية (j)
+
+#  المعطيات (البيانات)
+fixed_cost = {'Algiers': 80000, 'Oran': 70000, 'Annaba': 60000}   # fᵢ
+capacity = {'Algiers': 600, 'Oran': 400, 'Annaba': 500}           # sᵢ
+demand = {'France': 300, 'Italy': 350, 'Spain': 400}              # dⱼ
+
+# تكلفة الشحن (cᵢⱼ) من كل مركز إلى كل سوق
+cost = {
+    'Algiers': {'France': 30, 'Italy': 35, 'Spain': 45},
+    'Oran':    {'France': 35, 'Italy': 40, 'Spain': 30},
+    'Annaba':  {'France': 40, 'Italy': 30, 'Spain': 35}
+}
+
+#  إنشاء النموذج
+model = LpProblem("AgriExport_Network_Design", LpMinimize)
+
+# تعريف المتغيرات
+# xᵢⱼ = كمية السلع المنقولة من المركز i إلى السوق j
+x = LpVariable.dicts("x", [(i, j) for i in centers for j in markets], lowBound=0)
+
+# yᵢ = 1 إذا تم فتح المركز i، و0 إذا لم يُفتح
+y = LpVariable.dicts("y", centers, lowBound=0, upBound=1, cat='Binary')
+
+#  دالة الهدف
+# Minimize Z = Σ(i,j) cᵢⱼ * xᵢⱼ + Σ(i) fᵢ * yᵢ
+model += lpSum(cost[i][j] * x[(i, j)] for i in centers for j in markets) + \
+          lpSum(fixed_cost[i] * y[i] for i in centers)
+
+#  القيود
+# (1) تلبية الطلب في كل سوق j
+for j in markets:
+    model += lpSum(x[(i, j)] for i in centers) == demand[j], f"Demand_{j}"
+
+# (2) عدم تجاوز السعة في كل مركز i
+for i in centers:
+    model += lpSum(x[(i, j)] for j in markets) <= capacity[i] * y[i], f"Capacity_{i}"
+
+#  حل النموذج
+model.solve(PULP_CBC_CMD(msg=False))
+
+# عرض النتائج
+print("==========  النتائج المثلى ==========")
+for i in centers:
+    print(f"فتح المركز {i}: {int(value(y[i]))}")
+
+print("\n--- الكميات المنقولة ---")
+for i in centers:
+    for j in markets:
+        if value(x[(i, j)]) > 0:
+            print(f"من {i} إلى {j}: {value(x[(i, j)]):.2f} طن")
+
+print("\n--- 🔢 التكاليف ---")
+print(f"إجمالي التكلفة المثلى Z = {value(model.objective):,.2f} دج")
+
+# ============================================================
+# استيراد المكتبات
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# إنشاء الرسم البياني
+G = nx.DiGraph()
+
+# العقد (nodes)
+warehouses = ['Algiers', 'Oran', 'Annaba']   # المنشآت (المصانع أو المخازن)
+markets = ['France', 'Italy', 'Spain']        # الزبائن (الأسواق المستوردة)
+
+# إضافة العقد
+G.add_nodes_from(warehouses, bipartite=0)  # المستوى الأول: المنشآت
+G.add_nodes_from(markets, bipartite=1)     # المستوى الثاني: الأسواق
+
+# تحديد مواقع كل عقدة على الرسم
+pos = {
+    'Algiers': (-1, 0),
+    'Oran': (0, 0),
+    'Annaba': (1, 0),
+    'France': (-1, -1),
+    'Italy': (0, -1),
+    'Spain': (1, -1)
+}
+
+# الروابط (edges) تمثل تدفقات السلع بين المنشآت والأسواق
+edges = [
+    ('Algiers', 'France', 80),
+    ('Algiers', 'Italy', 40),
+    ('Annaba', 'Spain', 60),
+]
+
+# إضافة الروابط مع تسميات (الكميات)
+for i, j, qty in edges:
+    G.add_edge(i, j, weight=qty)
+
+# رسم العقد
+plt.figure(figsize=(8, 5))
+nx.draw_networkx_nodes(G, pos, nodelist=warehouses, node_color='lightgreen', node_size=1500, label='Warehouses')
+nx.draw_networkx_nodes(G, pos, nodelist=markets, node_color='skyblue', node_size=1500, label='Markets')
+
+# رسم الحواف (الأسهم)
+nx.draw_networkx_edges(G, pos, arrowstyle='->', arrowsize=20, edge_color='gray')
+
+# رسم أسماء العقد
+nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
+
+# رسم القيم (الكميات على الحواف)
+edge_labels = {(i, j): f"{w} units" for i, j, w in edges}
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=10)
+
+# العنوان والتفاصيل
+plt.title(" AgriExport Logistics Network", fontsize=14)
+plt.legend(scatterpoints=1)
+plt.axis('off')
+plt.show()
