@@ -1,0 +1,150 @@
+# ================================
+# 🔹 استيراد المكتبات
+# ================================
+from pulp import LpProblem, LpVariable, LpMinimize, lpSum, value
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# ================================
+# 1️⃣ تعريف البيانات
+# ================================
+suppliers = ['S1', 'S2']
+plants = ['P1', 'P2']
+markets = ['M1', 'M2']
+
+# الإمدادات من الموردين
+supply = {'S1': 60, 'S2': 40}
+
+# قدرات المصانع
+capacity = {'P1': 70, 'P2': 50}
+
+# الطلب في الأسواق
+demand = {'M1': 50, 'M2': 60}
+
+# تكاليف النقل بين الموردين والمصانع
+cost_sp = {
+    ('S1', 'P1'): 4, ('S1', 'P2'): 6,
+    ('S2', 'P1'): 5, ('S2', 'P2'): 4
+}
+
+# تكاليف النقل بين المصانع والأسواق
+cost_pm = {
+    ('P1', 'M1'): 3, ('P1', 'M2'): 5,
+    ('P2', 'M1'): 6, ('P2', 'M2'): 4
+}
+
+# ================================
+# 2️⃣ إنشاء نموذج البرمجة الخطية
+# ================================
+model = LpProblem("3_Level_Logistics_Network", LpMinimize)
+
+# ================================
+# 3️⃣ تعريف المتغيرات (تدفقات النقل)
+# ================================
+x_sp = LpVariable.dicts("Ship_SP", (suppliers, plants), lowBound=0)
+x_pm = LpVariable.dicts("Ship_PM", (plants, markets), lowBound=0)
+
+# ================================
+# 4️⃣ دالة الهدف: تقليل مجموع التكاليف
+# ================================
+model += (
+    lpSum(cost_sp[(s, p)] * x_sp[s][p] for s in suppliers for p in plants) +
+    lpSum(cost_pm[(p, m)] * x_pm[p][m] for p in plants for m in markets)
+)
+
+# ================================
+# 5️⃣ القيود
+# ================================
+
+# قيود الإمدادات من الموردين
+for s in suppliers:
+    model += lpSum(x_sp[s][p] for p in plants) <= supply[s]
+
+# قيود قدرات المصانع والتوازن (الوارد = الصادر)
+for p in plants:
+    model += (
+        lpSum(x_sp[s][p] for s in suppliers)
+        == lpSum(x_pm[p][m] for m in markets)
+    )
+    model += lpSum(x_sp[s][p] for s in suppliers) <= capacity[p]
+
+# قيود تلبية الطلب في الأسواق
+for m in markets:
+    model += lpSum(x_pm[p][m] for p in plants) >= demand[m]
+
+# ================================
+# 6️⃣ حل النموذج
+# ================================
+model.solve()
+
+# ================================
+# 7️⃣ عرض النتائج
+# ================================
+print("🔹 النقل من الموردين إلى المصانع:")
+for s in suppliers:
+    for p in plants:
+        if x_sp[s][p].value() > 0:
+            print(f"{s} → {p} : {x_sp[s][p].value()} وحدة (تكلفة {cost_sp[(s,p)]})")
+
+print("\n🔹 النقل من المصانع إلى الأسواق:")
+for p in plants:
+    for m in markets:
+        if x_pm[p][m].value() > 0:
+            print(f"{p} → {m} : {x_pm[p][m].value()} وحدة (تكلفة {cost_pm[(p,m)]})")
+
+print(f"\n💰 إجمالي التكلفة المثلى: {value(model.objective)}")
+
+# ================================
+# 8️⃣ الرسم البياني للشبكة
+# ================================
+G = nx.DiGraph()
+
+# إضافة العقد (nodes)
+for s in suppliers:
+    G.add_node(s, pos=(0, suppliers.index(s)))
+
+for p in plants:
+    G.add_node(p, pos=(1, plants.index(p)))
+
+for m in markets:
+    G.add_node(m, pos=(2, markets.index(m)))
+
+# إضافة الأقواس (edges)
+for s in suppliers:
+    for p in plants:
+        if x_sp[s][p].value() > 0:
+            G.add_edge(s, p, weight=cost_sp[(s, p)], flow=x_sp[s][p].value())
+
+for p in plants:
+    for m in markets:
+        if x_pm[p][m].value() > 0:
+            G.add_edge(p, m, weight=cost_pm[(p, m)], flow=x_pm[p][m].value())
+
+# إعداد مواقع العقد للرسم
+pos = {
+    s: (0, suppliers.index(s) * 2)
+    for s in suppliers
+}
+pos.update({
+    p: (2, plants.index(p) * 2)
+    for p in plants
+})
+pos.update({
+    m: (4, markets.index(m) * 2)
+    for m in markets
+})
+
+# رسم العقد والروابط
+plt.figure(figsize=(10, 6))
+nx.draw(G, pos, with_labels=True, node_size=1800, node_color="skyblue", arrows=True)
+
+# كتابة القيم على الحواف
+edge_labels = {
+    (u, v): f"{d['flow']}u | c={d['weight']}"
+    for u, v, d in G.edges(data=True)
+}
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=10)
+
+plt.title("شبكة اللوجستيك المثلى (3 مستويات)")
+plt.axis("off")
+plt.show()
