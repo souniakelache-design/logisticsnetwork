@@ -1,0 +1,104 @@
+#=======شركة جزائرية مصدرة======
+company_name = "AGRODAT"
+location = "BISKRA"
+#======عرض المعلومات======
+print(f"AGRODAT" "\n" "BISKRA")
+"from pulp import LpProblem, LpVariable, LpMinimize, lpSum,PULP_CBC_CMD, value"
+#=====المستودعات=====
+Warehouses = ["W1", "W2", "W3"]
+#=====الأسواق=====
+Market = ["M1", "M2", "M3", "M4"]
+#=====تحديد تكلفة النقل من المستودع إلى السوق=====
+cost = {
+    ("W1", "M1"): 65, ("W1", "M2"): 55, ("W1", "M3"): 80, ("W1", "M4"): 100,
+    ("W2", "M1"): 55, ("W2", "M2"): 44, ("W2", "M3"): 75, ("W2", "M4"): 105,
+    ("W3", "M1"): 82, ("W3", "M2"): 60, ("W3", "M3"): 120, ("W3", "M4"): 90
+}
+#=====طاقة  استيعاب كل مستودع=====
+Capacity = {
+    "W1": 65000,
+    "W2": 45000,
+    "W3": 75000}
+#====الكميات المطلوبة من الأسواق====
+Demand_Market = {
+    "M1": 50,
+    "M2": 70,
+    "M3": 95,
+    "M4": 82
+}
+#====تحديد المتغيرات كمية الشحن من كل مخزن إلى السوق====
+from pulp import *
+warehouses = ["W1", "W2","W3"]
+markets = ["M1", "M2","M3","M4"]
+ship_vars = LpVariable.dicts("Ship", (warehouses, markets), lowBound=0)
+print(ship_vars)
+#==دالة الهدف في هذه الحالة: التدنية==
+model = LpProblem("Logistics_Network_Design", LpMinimize)
+model += lpSum (cost[(w,m)] * ship_vars[w][m] for w in warehouses for m in markets)
+#قيود الاستيعاب
+for w in warehouses:
+    model += lpSum(ship_vars[w][m] for m in markets)<= Capacity[w]
+#قيود الطلب
+for m in markets:
+    model += lpSum(ship_vars[w][m] for w in warehouses)>= Demand_Market[m]
+#الحل
+model.solve()
+print("statut:",LpStatus[model.status])
+print("Total cost:",value(model.objective))
+for w in warehouses:
+    for m in markets:
+        if value(ship_vars[w][m]) > 0:
+            print(f"{w}: {ship_vars[w][m].value()}")
+# ================================
+#===== رسم الشبكة اللوجستية =====
+import networkx as nx
+import matplotlib.pyplot as plt
+G = nx.DiGraph()
+
+# إضافة العقد
+G.add_nodes_from(warehouses, layer='warehouse')
+G.add_nodes_from(markets, layer='market')
+
+# إضافة الحواف (edges) مع الوزن والكمية المنقولة فقط
+for w in warehouses:
+    for m in markets:
+        shipped = value(ship_vars[w][m])
+        if shipped > 0:
+            G.add_edge(w, m, weight=cost[(w, m)], shipment=shipped)
+
+# تحديد مواقع المستودعات والأسواق في الرسم
+pos = {}
+for i, w in enumerate(warehouses):
+    pos[w] = (0, i * 2)
+for i, m in enumerate(markets):
+    pos[m] = (5, i * 1.5)
+
+# رسم العقد
+nx.draw_networkx_nodes(G, pos, nodelist=warehouses, node_color='lightgreen', node_size=2000, label='Warehouses')
+nx.draw_networkx_nodes(G, pos, nodelist=markets, node_color='lightblue', node_size=2000, label='Markets')
+
+# رسم الحواف
+nx.draw_networkx_edges(G, pos, arrowstyle="->", arrowsize=15, edge_color='gray')
+
+# تسميات العقد
+nx.draw_networkx_labels(G, pos, font_size=10, font_weight='bold')
+
+# تسميات الحواف: الكمية والتكلفة
+edge_labels = {(u, v): f"{G[u][v]['shipment']} @ {G[u][v]['weight']}" for u, v in G.edges()}
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+plt.title("Logistics Network – Optimal Shipments")
+plt.axis("off")
+plt.legend()
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
